@@ -1,1 +1,1 @@
-# Learning Simultaneous Localization and Mapping
+# Experiment with OpenCV camera feature tracking
