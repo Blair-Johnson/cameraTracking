@@ -55,20 +55,37 @@ def track(des0, des1):
     
     return matches
 
-def process(img1, args, des0 = None):
+def show_matches(kpts0, kpts1, matches, img):
+    for match in matches:
+        src = kpts1[match.trainIdx].pt
+        dst = kpts0[match.queryIdx].pt
+        src = tuple([int(i) for i in src])
+        dst = tuple([int(i) for i in dst])
+        img = cv2.line(img, src, dst, color=(255,0,255), thickness=2)
+    return img
+
+
+
+def process(img1, args, des0 = None, kpts0 = None):
     img1 = cv2.resize(img1, (853,480))
     
     corners = get_corners(img1, args)
     img = plot_corners(img1, corners)
 
-    kpts, des1 = extract_keypoints(img1, corners)
+    kpts1, des1 = extract_keypoints(img1, corners)
 
     if type(des0) != type(None):
         matches = track(des0, des1)
-        matches = sorted(matches, key = lambda x:x.distance)
-        print(matches[0].trainIdx)
+        matches = [match for match in matches if match.distance < 10]
+        print(len(matches))
+        #matches = sorted(matches, key = lambda x:x.distance)
+        #matches = matches[:int(len(matches)*.40)]
+        img = show_matches(kpts0, kpts1, matches, img)
+        # for each match I want to draw a line between the train descriptor (des0) location
+        # and the match descriptor (des1) location. This should allow me to see the motion
+        # of trackers as the scene progresses
 
-    return img, des1
+    return img, des1, kpts1
 
 def capture_loop(args):
     closed = False
@@ -82,7 +99,7 @@ def capture_loop(args):
             if not ret:
                 break
 
-            img, des0 = process(img, args)
+            img, des0, kpts0 = process(img, args)
 
             cv2.imshow("Stream", img)
             cv2.waitKey(1)
@@ -97,8 +114,9 @@ def capture_loop(args):
         if not ret:
             break
 
-        img, des1 = process(img, args, des0 = des0)
+        img, des1, kpts1 = process(img, args, des0 = des0, kpts0 = kpts0)
         des0 = des1
+        kpts0 = kpts1
 
         cv2.imshow("Stream", img)
         cv2.waitKey(1)
