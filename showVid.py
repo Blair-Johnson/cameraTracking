@@ -63,8 +63,10 @@ def process(img1, args, des0 = None):
 
     kpts, des1 = extract_keypoints(img1, corners)
 
-    if type(des0) != None:
+    if type(des0) != type(None):
         matches = track(des0, des1)
+        matches = sorted(matches, key = lambda x:x.distance)
+        print(matches[0].trainIdx)
 
     return img, des1
 
