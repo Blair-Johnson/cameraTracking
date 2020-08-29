@@ -6,37 +6,113 @@ import argparse
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("path", help = "Path to test file", type = str)
+    parser.add_argument("--max_points", help = "Maximum number of keypoints", default = 500, type = int)
     return parser.parse_args()
 
-def process(img):
-    img = cv2.resize(img, (640,480))
+def get_corners(img, args):
+    greyscale_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    greyscale_img = cv2.convertScaleAbs(greyscale_img)
+    corners = cv2.goodFeaturesToTrack(greyscale_img, maxCorners=args.max_points, qualityLevel=.01, minDistance=4)
+    
+    return corners
+  
+def convert_to_keypoints(corners):
+    kpts = [cv2.KeyPoint(x,y,4) for [[x,y]] in corners]
+    return kpts
+
+def gen_rectangle(corner, size = 4):
+    size = int(size**.5)
+    corner2 = [[x+size,y+size] for x,y in corner]
+    xmin = int(corner[0][0])
+    ymin = int(corner[0][1])
+    xmax = int(corner2[0][0])
+    ymax = int(corner2[0][1])
+
+    return  (xmin, ymin), (xmax, ymax)
+
+def plot_corners(img, corners):
+    for corner in corners:
+        topl, btr = gen_rectangle(corner)
+        img = cv2.rectangle(img, topl, btr, color=(255,0,0), thickness=1)
+
     return img
 
-def capture_loop(path):
+def extract_keypoints(img, corners):
 
-    capture = cv2.VideoCapture(path)
+    greyscale_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    greyscale_img = cv2.convertScaleAbs(greyscale_img)
+    
+    orb = cv2.ORB_create()
+    kpts = convert_to_keypoints(corners)
+    kpts, des = orb.compute(greyscale_img, kpts)
 
+    return kpts, des
+
+def track(des0, des1):
+    bf_matcher = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+
+    matches = bf_matcher.match(des0, des1)
+    
+    return matches
+
+def process(img1, args, des0 = None):
+    img1 = cv2.resize(img1, (853,480))
+    
+    corners = get_corners(img1, args)
+    img = plot_corners(img1, corners)
+
+    kpts, des1 = extract_keypoints(img1, corners)
+
+    if type(des0) != None:
+        matches = track(des0, des1)
+
+    return img, des1
+
+def capture_loop(args):
+    closed = False
+    capture = cv2.VideoCapture(args.path)
+    
+    init = False
     while capture.isOpened():
+        if not init:
+            ret, img = capture.read()
+
+            if not ret:
+                break
+
+            img, des0 = process(img, args)
+
+            cv2.imshow("Stream", img)
+            cv2.waitKey(1)
+            if cv2.getWindowProperty('Stream',cv2.WND_PROP_VISIBLE) < 1:
+                closed = True
+                break
+
+            init = True
+
         ret, img = capture.read()
 
-        if ret == False:
+        if not ret:
             break
 
-        #main loop of processing
-        img = process(img)
-        #displaying results
+        img, des1 = process(img, args, des0 = des0)
+        des0 = des1
+
         cv2.imshow("Stream", img)
         cv2.waitKey(1)
         if cv2.getWindowProperty('Stream',cv2.WND_PROP_VISIBLE) < 1:        
+            closed = True
             break
 
     capture.release()
     cv2.destroyAllWindows()
-    
+    return closed
 
 if __name__ == "__main__":
     args = get_args()
     
-    capture_loop(args.path)
+    terminate = False
+    while not terminate:
+        terminate = capture_loop(args)
 
     print('done!')
